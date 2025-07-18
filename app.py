@@ -5,7 +5,7 @@ from PIL import Image
 import requests
 from io import BytesIO
 
-# Configuración
+# Configuración del dashboard
 st.set_page_config(
     page_title="Dashboard Interactivo Resultados de Pruebas de Movilidad",
     layout="wide",
@@ -13,17 +13,17 @@ st.set_page_config(
 )
 
 # URLs actualizadas
-LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"  # URL directa del logo
+LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Función para cargar el logo con manejo de errores
+# Función para cargar el logo
 def cargar_logo():
     try:
-        response = requests.get(LOGO_URL)
+        response = requests.get(LOGO_URL, timeout=10)
         logo = Image.open(BytesIO(response.content))
         return logo
     except Exception as e:
-        st.error(f"Error cargando logo: {str(e)}")
+        st.sidebar.warning("El logo no se pudo cargar")
         return None
 
 @st.cache_data(ttl=300)
@@ -32,7 +32,7 @@ def cargar_datos():
         # Leer CSV con nombres exactos de columnas
         df = pd.read_csv(DATA_URL, encoding='utf-8')
         
-        # Mapeo exacto de columnas (verificado)
+        # Mapeo exacto de columnas (verificado en tu CSV)
         column_map = {
             'JUGADOR': 'Jugador',
             'CATEGORÍA': 'Categoría',
@@ -53,10 +53,11 @@ def cargar_datos():
         required_columns = ['Jugador', 'Categoría', 'Fecha']
         missing = [col for col in required_columns if col not in df.columns]
         if missing:
-            st.error(f"Columnas faltantes: {', '.join(missing)}")
+            st.error(f"Columnas requeridas faltantes: {', '.join(missing)}")
+            st.info(f"Columnas encontradas: {list(df.columns)}")
             return pd.DataFrame()
 
-        # Limpieza de datos
+        # Limpieza y conversión de datos
         df = df.dropna(subset=['Jugador', 'Fecha'])
         df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
         df = df.dropna(subset=['Fecha'])
@@ -66,7 +67,12 @@ def cargar_datos():
         pruebas_columns = list(UMBRALES.keys())
         for col in pruebas_columns:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(
+                    df[col].astype(str)
+                    .str.replace(',', '.')
+                    .str.replace(r'[^\d.]', '', regex=True),
+                    errors='coerce'
+                ).fillna(0)
         
         return df
 
@@ -74,39 +80,71 @@ def cargar_datos():
         st.error(f"Error al cargar datos: {str(e)}")
         return pd.DataFrame()
 
-# Umbrales
+# Umbrales para las pruebas
 UMBRALES = {
-    "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
-    "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
-    "THOMAS SARTORIO D": 80, "THOMAS SARTORIO I": 80,
-    "JURDAN D": 75, "JURDAN I": 75
+    "THOMAS PSOAS D": 10,
+    "THOMAS PSOAS I": 10,
+    "THOMAS CUADRICEPS D": 50,
+    "THOMAS CUADRICEPS I": 50,
+    "THOMAS SARTORIO D": 80,
+    "THOMAS SARTORIO I": 80,
+    "JURDAN D": 75,
+    "JURDAN I": 75
 }
 
 def mostrar_icono(valor, umbral):
-    return "👍" if valor >= umbral else "👎"
+    try:
+        return "👍" if float(valor) >= umbral else "👎"
+    except:
+        return "❓"
 
-# Interfaz
+# Interfaz principal
 def main():
-    # Mostrar logo
+    # Logo
     logo = cargar_logo()
     if logo:
         st.image(logo, width=200)
-    else:
-        st.warning("Logo no disponible")
-
+    
     st.title("Dashboard Interactivo Resultados de Pruebas de Movilidad")
     
+    # Cargar datos
     df = cargar_datos()
     
     if df.empty:
-        st.warning("No hay datos válidos. Verifica tu archivo CSV.")
+        st.warning("""
+            No se pudieron cargar datos. Verifica que:
+            1. El CSV tenga columnas: JUGADOR, CATEGORÍA, FECHA
+            2. Los nombres de columnas estén exactamente como se muestran arriba
+            3. El archivo contenga datos válidos
+        """)
         return
     
-    # Filtros
+    # Filtros en sidebar
     st.sidebar.header("Filtros")
-    jugadores = st.sidebar.multiselect("Jugador", sorted(df['Jugador'].unique()))
-    categorias = st.sidebar.multiselect("Categoría", sorted(df['Categoría'].unique()))
-    fechas = st.sidebar.multiselect("Fecha", sorted(df['Fecha'].unique(), reverse=True))
+    
+    # Obtener opciones únicas
+    opciones_jugador = sorted(df['Jugador'].unique())
+    opciones_categoria = sorted(df['Categoría'].unique())
+    opciones_fecha = sorted(df['Fecha'].unique(), reverse=True)
+    
+    # Widgets de filtro
+    jugadores = st.sidebar.multiselect(
+        "Jugador",
+        options=opciones_jugador,
+        default=None
+    )
+    
+    categorias = st.sidebar.multiselect(
+        "Categoría",
+        options=opciones_categoria,
+        default=None
+    )
+    
+    fechas = st.sidebar.multiselect(
+        "Fecha",
+        options=opciones_fecha,
+        default=None
+    )
     
     # Aplicar filtros
     df_filtrado = df.copy()
@@ -120,13 +158,24 @@ def main():
     # Mostrar resultados
     st.subheader("Resultados Filtrados")
     
-    if not df_filtrado.empty:
+    if df_filtrado.empty:
+        st.warning("No hay resultados con los filtros seleccionados")
+    else:
+        # Aplicar iconos
         for col in UMBRALES:
             if col in df_filtrado.columns:
-                df_filtrado[col] = df_filtrado[col].apply(lambda x: mostrar_icono(x, UMBRALES[col]))
+                df_filtrado[col] = df_filtrado[col].apply(
+                    lambda x: mostrar_icono(x, UMBRALES[col])
         
+        # Mostrar tabla
         st.dataframe(
-            df_filtrado[["Jugador", "Categoría", "Fecha"] + list(UMBRALES.keys())],
+            df_filtrado[
+                ["Jugador", "Categoría", "Fecha"] + 
+                list(UMBRALES.keys())
+            ].style.applymap(
+                lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
+                subset=list(UMBRALES.keys())
+            ),
             height=700,
             use_container_width=True,
             hide_index=True
