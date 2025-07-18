@@ -16,28 +16,33 @@ DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2
 @st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Leer CSV con los nombres REALES de tus columnas
+        # Leer CSV con los nombres EXACTOS de tus columnas
         df = pd.read_csv(DATA_URL, encoding='utf-8')
         
-        # Verificación de columnas (nombres exactos de tu CSV)
-        st.write("🔍 Columnas encontradas en tu CSV:", list(df.columns))  # Solo para diagnóstico
-        
-        # Mapeo REAL de tus columnas
+        # Mapeo EXACTO de columnas (según tu CSV)
         column_map = {
-            'Jugador': 'Jugador',  # Verifica si en tu CSV es 'Jugador' o 'Nombre del Jugador'
-            'Categoría': 'Categoría',  # Verifica si en tu CSV es 'Categoría' o 'Tipo de Prueba'
-            'Fecha': 'Fecha'  # Verifica si en tu CSV es 'Fecha' o 'Fecha de Prueba'
+            'JUGADOR': 'Jugador',
+            'CATEGORÍA': 'Categoría',  # Con tilde
+            'FECHA': 'Fecha',
+            'THOMAS PSOAS D': 'THOMAS PSOAS D',
+            'THOMAS PSOAS I': 'THOMAS PSOAS I',
+            'THOMAS CUADRICEPS D': 'THOMAS CUADRICEPS D',
+            'THOMAS CUADRICEPS I': 'THOMAS CUADRICEPS I',
+            'THOMAS SARTORIO D': 'THOMAS SARTORIO D',
+            'THOMAS SARTORIO I': 'THOMAS SARTORIO I',
+            'JURDAN D': 'JURDAN D',
+            'JURDAN I': 'JURDAN I'
         }
         
         # Renombrar columnas
-        df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
+        df = df.rename(columns=column_map)
         
-        # Verificar columnas esenciales
+        # Verificación de columnas
         required_columns = ['Jugador', 'Categoría', 'Fecha']
         missing = [col for col in required_columns if col not in df.columns]
         if missing:
-            st.error(f"❌ Columnas faltantes en tu CSV: {', '.join(missing)}")
-            st.info("ℹ️ Las columnas requeridas son: 'Jugador', 'Categoría', 'Fecha'")
+            st.error(f"Columnas requeridas faltantes: {', '.join(missing)}")
+            st.info(f"Columnas encontradas: {list(df.columns)}")
             return pd.DataFrame()
 
         # Limpieza de datos
@@ -50,14 +55,8 @@ def cargar_datos():
         # Limpieza de categorías
         df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
         
-        # Procesar valores numéricos (nombres REALES de tus columnas de pruebas)
-        pruebas_columns = [
-            "THOMAS PSOAS D", "THOMAS PSOAS I",
-            "THOMAS CUADRICEPS D", "THOMAS CUADRICEPS I",
-            "THOMAS SARTORIO D", "THOMAS SARTORIO I",
-            "JURDAN D", "JURDAN I"
-        ]
-        
+        # Procesar valores numéricos
+        pruebas_columns = list(UMBRALES.keys())
         for col in pruebas_columns:
             if col in df.columns:
                 df[col] = (
@@ -71,10 +70,10 @@ def cargar_datos():
         return df
 
     except Exception as e:
-        st.error(f"🚨 Error crítico al cargar datos: {str(e)}")
+        st.error(f"Error al cargar datos: {str(e)}")
         return pd.DataFrame()
 
-# Umbrales
+# Umbrales (ajustados a tus columnas)
 UMBRALES = {
     "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
     "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
@@ -97,10 +96,10 @@ def main():
     
     if df.empty:
         st.warning("""
-            📢 No se pudieron cargar los datos. Por favor verifica:
-            1. Que tu CSV tenga las columnas: 'Jugador', 'Categoría' y 'Fecha'
-            2. Que los nombres coincidan exactamente (incluyendo mayúsculas y acentos)
-            3. Que el archivo no esté corrupto
+            No se pudieron cargar los datos. Verifica que:
+            1. El CSV tenga las columnas: JUGADOR, CATEGORÍA, FECHA
+            2. Los nombres estén en MAYÚSCULAS y con tildes
+            3. El archivo no esté corrupto
         """)
         return
     
@@ -149,7 +148,7 @@ def main():
         st.dataframe(
             df_filtrado[
                 ["Jugador", "Categoría", "Fecha"] + 
-                [c for c in UMBRALES.keys() if c in df_filtrado.columns]
+                list(UMBRALES.keys())
             ].style.applymap(
                 lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
                 subset=list(UMBRALES.keys())
