@@ -16,86 +16,78 @@ DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2
 @st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Leer CSV con manejo explícito de formatos
+        # Leer CSV con manejo robusto de errores
         df = pd.read_csv(
             DATA_URL,
-            encoding='latin1',  # Para caracteres especiales
+            encoding='utf-8',
+            sep=',',
             parse_dates=['Fecha'],
-            dayfirst=True  # Formato DD/MM/AAAA
+            dayfirst=True,
+            on_bad_lines='skip'
         )
         
         # Limpieza exhaustiva de datos
-        pruebas_columns = [
+        columnas_pruebas = [
             "THOMAS PSOAS D", "THOMAS PSOAS I",
             "THOMAS CUADRICEPS D", "THOMAS CUADRICEPS I",
             "THOMAS SARTORIO D", "THOMAS SARTORIO I",
             "JURDAN D", "JURDAN I"
         ]
         
-        for col in pruebas_columns:
+        for col in columnas_pruebas:
             if col in df.columns:
-                # Convertir a número, reemplazar comas por puntos y manejar textos
+                # Convertir a texto, limpiar y luego a número
                 df[col] = (
-                    pd.to_numeric(
-                        df[col].astype(str).str.replace(',', '.'), 
-                        errors='coerce'
-                    )
-                    .fillna(0)  # Rellenar valores faltantes con 0
-                    .astype(float)
+                    df[col].astype(str)
+                    .str.replace(',', '.')
+                    .str.replace('[^0-9.]', '', regex=True)
+                    .replace('', '0')
                 )
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
-        # Formatear fecha
-        df['Fecha'] = df['Fecha'].dt.date
+        # Asegurar columnas críticas
+        df['Jugador'] = df['Jugador'].fillna('Desconocido')
+        df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce').dt.date
         
         return df
     
     except Exception as e:
-        st.error(f"🚨 Error crítico: {str(e)}")
-        return pd.DataFrame()
+        st.error(f"Error al cargar datos: {str(e)}")
+        return pd.DataFrame(columns=['Jugador', 'Fecha'] + columnas_pruebas)
 
-# Umbrales exactos para tus columnas
+# Umbrales
 UMBRALES = {
-    "THOMAS PSOAS D": 10,
-    "THOMAS PSOAS I": 10,
-    "THOMAS CUADRICEPS D": 50,
-    "THOMAS CUADRICEPS I": 50,
-    "THOMAS SARTORIO D": 80,
-    "THOMAS SARTORIO I": 80,
-    "JURDAN D": 75,
-    "JURDAN I": 75
+    "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
+    "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
+    "THOMAS SARTORIO D": 80, "THOMAS SARTORIO I": 80,
+    "JURDAN D": 75, "JURDAN I": 75
 }
 
 def mostrar_icono(valor, umbral):
     try:
         return "👍" if float(valor) >= umbral else "👎"
     except:
-        return "❌"
+        return "❓"
 
 # Interfaz
 st.image(LOGO_URL, width=200)
-st.title("📊 Resultados Confiables de Pruebas USMP")
+st.title("Resultados de Pruebas USMP")
 
 df = cargar_datos()
 
 if not df.empty:
-    # Diagnóstico (puedes borrar esto después)
-    st.sidebar.success("✅ Datos cargados correctamente")
-    st.sidebar.write(f"📅 Fechas disponibles: {len(df['Fecha'].unique()}")
-    st.sidebar.write(f"👥 Jugadores cargados: {len(df['Jugador'].unique()}")
-    
-    # Filtros mejorados
-    st.sidebar.header("🔍 Filtros Avanzados")
-    
+    # Filtros
+    st.sidebar.header("Filtros")
     jugadores = st.sidebar.multiselect(
-        "Seleccionar Jugador",
+        "Jugador",
         options=sorted(df['Jugador'].unique()),
-        default=df['Jugador'].unique()[0] if len(df['Jugador']) > 0 else None
+        default=None
     )
     
     fechas = st.sidebar.multiselect(
-        "Seleccionar Fecha",
+        "Fecha",
         options=sorted(df['Fecha'].unique(), reverse=True),
-        default=df['Fecha'].max() if len(df['Fecha']) > 0 else None
+        default=None
     )
     
     # Aplicar filtros
@@ -105,32 +97,22 @@ if not df.empty:
     if fechas:
         df_filtrado = df_filtrado[df_filtrado['Fecha'].isin(fechas)]
     
-    # Mostrar resultados
-    st.subheader("📋 Resultados por Jugador")
-    
-    # Crear columnas para mejor visualización
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        st.metric("Total de Jugadores", len(df_filtrado['Jugador'].unique()))
-    
-    with col2:
-        st.metric("Última Fecha", df_filtrado['Fecha'].max().strftime('%d/%m/%Y'))
-    
-    # Tabla interactiva
+    # Mostrar tabla
     st.dataframe(
         df_filtrado.style.applymap(
-            lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
+            lambda x: 'background-color: #e6ffe6' if x == "👍" else 
+                     ('background-color: #ffe6e6' if x == "👎" else ''),
             subset=list(UMBRALES.keys())
         ),
         height=700,
         use_container_width=True,
-        hide_index=True,
-        column_order=["Jugador", "Fecha"] + list(UMBRALES.keys())
-    
+        column_config={
+            "Jugador": "Jugador",
+            "Fecha": st.column_config.DateColumn("Fecha")
+        }
+    )
 else:
-    st.warning("No se encontraron datos válidos. Verifica tu archivo CSV.")
+    st.warning("No se encontraron datos válidos. Verifica el archivo CSV.")
 
-# Créditos
 st.sidebar.markdown("---")
-st.sidebar.caption("🔄 Actualizado el: " + datetime.now().strftime('%d/%m/%Y %H:%M'))
+st.sidebar.caption(f"Última actualización: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
