@@ -9,18 +9,36 @@ st.set_page_config(
     page_icon="⚽"
 )
 
-# URLs (¡cambia el logo!)
-LOGO_URL = "https://ibb.co/5hKcnyZ3"  # Sube tu logo a imgbb.com
+# URLs (¡Actualiza estos enlaces!)
+LOGO_URL = "https://ibb.co/5hKcnyZ3"  # Cambia por tu logo
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
 @st.cache_data(ttl=300)
 def cargar_datos():
-    df = pd.read_csv(DATA_URL)
+    try:
+        df = pd.read_csv(DATA_URL)
+        
+        # Limpieza de datos
+        df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
+        
+        # Columnas de pruebas (convertir a números y limpiar)
+        columnas_pruebas = [
+            "THOMAS PSOAS D", "THOMAS PSOAS I",
+            "THOMAS CUADRICEPS D", "THOMAS CUADRICEPS I",
+            "THOMAS SARTORIO D", "THOMAS SARTORIO I",
+            "JURDAN D", "JURDAN I"
+        ]
+        
+        for col in columnas_pruebas:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')  # Convierte a número (NaN si falla)
+                df[col] = df[col].fillna(0)  # Reemplaza NaN por 0
+        
+        return df
     
-    # Convertir fechas (formato DD/MM/AAAA)
-    df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True).dt.date
-    
-    return df
+    except Exception as e:
+        st.error(f"Error al cargar datos: {str(e)}")
+        return pd.DataFrame()  # Devuelve un DataFrame vacío para evitar errores
 
 # Umbrales exactos para tus columnas
 UMBRALES = {
@@ -35,15 +53,17 @@ UMBRALES = {
 }
 
 def mostrar_icono(valor, umbral):
+    if pd.isna(valor):  # Maneja valores faltantes
+        return "❓"
     return "👍" if valor >= umbral else "👎"
 
 # Interfaz
 st.image(LOGO_URL, width=200)
 st.title("Resultados de Pruebas USMP")
 
-try:
-    df = cargar_datos()
-    
+df = cargar_datos()
+
+if not df.empty:
     # Filtros
     st.sidebar.header("Filtros")
     jugadores = st.sidebar.multiselect("Jugador", df['Jugador'].unique())
@@ -69,8 +89,8 @@ try:
             "Fecha": st.column_config.DateColumn("Fecha"),
         },
         height=700,
-        use_container_width=True
+        use_container_width=True,
+        hide_index=True
     )
-    
-except Exception as e:
-    st.error(f"Error: {str(e)}")
+else:
+    st.warning("No se pudieron cargar los datos. Verifica el archivo CSV.")
