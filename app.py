@@ -7,7 +7,7 @@ from io import BytesIO
 
 # Configuración del dashboard
 st.set_page_config(
-    page_title="Dashboard de Pruebas de Movilidad",
+    page_title="Dashboard de Pruebas de Movilidad USMP",
     layout="wide",
     page_icon="⚽"
 )
@@ -32,124 +32,181 @@ UMBRALES = {
 def cargar_logo():
     try:
         response = requests.get(LOGO_URL, timeout=10)
-        return Image.open(BytesIO(response.content))
-    except:
+        logo = Image.open(BytesIO(response.content))
+        return logo
+    except Exception as e:
+        st.sidebar.warning(f"No se pudo cargar el logo: {str(e)}")
         return None
 
 @st.cache_data(ttl=3600)
 def cargar_datos():
     try:
+        # Descargar y leer los datos
         df = pd.read_csv(DATA_URL)
         
-        # Renombrar columnas para estandarizar
-        df = df.rename(columns={
+        # Verificar estructura de datos
+        st.session_state.columnas_originales = df.columns.tolist()
+        
+        # Estandarizar nombres de columnas
+        mapeo_columnas = {
             'JUGADOR': 'Jugador',
             'CATEGORIA': 'Categoría',
             'FECHA': 'Fecha'
-        })
+        }
         
-        # Limpieza de datos
+        # Renombrar columnas
+        df = df.rename(columns=mapeo_columnas)
+        
+        # Limpieza básica de datos
         df = df.dropna(subset=['Jugador', 'Fecha'])
-        df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
+        
+        # Convertir fechas
+        try:
+            df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True).dt.date
+        except:
+            df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
+        
+        # Limpieza de categorías
         df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
         
-        # Convertir valores numéricos
-        for col in UMBRALES:
-            if col in df.columns:
-                df[col] = pd.to_numeric(
-                    df[col].astype(str)
+        # Procesar valores numéricos
+        for prueba in UMBRALES:
+            if prueba in df.columns:
+                df[prueba] = pd.to_numeric(
+                    df[prueba].astype(str)
                     .str.replace(',', '.')
                     .str.replace(r'[^\d.]', '', regex=True),
                     errors='coerce'
                 )
         
-        return df.dropna(subset=list(UMBRALES.keys())), None
+        return df, None
+    
     except Exception as e:
-        return pd.DataFrame(), str(e)
+        return None, f"Error al cargar datos: {str(e)}"
 
 def mostrar_icono(valor, umbral):
-    if pd.isna(valor):
+    try:
+        if pd.isna(valor):
+            return "❓"
+        return "👍" if float(valor) >= umbral else "👎"
+    except:
         return "❓"
-    return "👍" if float(valor) >= umbral else "👎"
+
+def aplicar_filtros(df, jugadores, categorias, fechas):
+    try:
+        mask = pd.Series(True, index=df.index)
+        
+        if jugadores:
+            mask &= df['Jugador'].isin(jugadores)
+        if categorias:
+            mask &= df['Categoría'].isin(categorias)
+        if fechas:
+            mask &= df['Fecha'].isin(fechas)
+        
+        return df[mask]
+    except Exception as e:
+        st.error(f"Error al aplicar filtros: {str(e)}")
+        return df
 
 def main():
-    # Logo
-    logo = cargar_logo()
-    if logo:
-        st.sidebar.image(logo, width=150)
-    
-    st.title("📊 Resultados de Pruebas de Movilidad")
-    
-    # Cargar datos
-    df, error = cargar_datos()
-    
-    if error:
-        st.error(f"Error al cargar datos: {error}")
-        return
-    
-    if df.empty:
-        st.warning("No se encontraron datos válidos en el archivo.")
-        return
-    
-    # Filtros
-    st.sidebar.header("🔍 Filtros")
-    
-    jugadores = st.sidebar.multiselect(
-        "Jugadores",
-        options=sorted(df['Jugador'].unique()))
-    
-    categorias = st.sidebar.multiselect(
-        "Categorías",
-        options=sorted(df['Categoría'].unique()))
-    
-    fechas = st.sidebar.multiselect(
-        "Fechas",
-        options=sorted(df['Fecha'].unique(), reverse=True))
-    
-    # Aplicar filtros
-    mask = pd.Series(True, index=df.index)
-    if jugadores:
-        mask &= df['Jugador'].isin(jugadores)
-    if categorias:
-        mask &= df['Categoría'].isin(categorias)
-    if fechas:
-        mask &= df['Fecha'].isin(fechas)
-    
-    df_filtrado = df[mask]
-    
-    # Mostrar resultados
-    if df_filtrado.empty:
-        st.warning("No hay datos con los filtros seleccionados")
-    else:
-        # Aplicar iconos
-        df_mostrar = df_filtrado.copy()
-        for col in UMBRALES:
-            if col in df_mostrar.columns:
-                df_mostrar[col] = df_mostrar[col].apply(
-                    lambda x: mostrar_icono(x, UMBRALES[col]))
+    try:
+        # Cargar logo
+        logo = cargar_logo()
+        if logo:
+            st.sidebar.image(logo, width=150)
         
-        # Seleccionar columnas
-        columnas = ['Jugador', 'Categoría', 'Fecha'] + list(UMBRALES.keys())
-        columnas = [c for c in columnas if c in df_mostrar.columns]
+        st.title("⚽ Dashboard de Pruebas de Movilidad USMP")
+        st.markdown("---")
         
-        # Mostrar tabla
-        st.dataframe(
-            df_mostrar[columnas].style.applymap(
-                lambda x: 'color: green' if x == "👍" else 
-                         ('color: red' if x == "👎" else 'color: gray'),
-                subset=list(UMBRALES.keys())
-            ),
-            height=600,
-            use_container_width=True,
-            hide_index=True
+        # Cargar datos con manejo de errores
+        df, error = cargar_datos()
+        
+        if error or df is None:
+            st.error(error)
+            if hasattr(st.session_state, 'columnas_originales'):
+                st.warning(f"Columnas encontradas en el archivo: {st.session_state.columnas_originales}")
+            return
+        
+        if df.empty:
+            st.warning("El archivo no contiene datos válidos.")
+            return
+        
+        # Mostrar resumen inicial
+        st.sidebar.markdown(f"**Total de registros:** {len(df)}")
+        st.sidebar.markdown(f"**Período:** {df['Fecha'].min()} al {df['Fecha'].max()}")
+        
+        # Filtros en sidebar
+        st.sidebar.header("Filtros")
+        
+        jugadores = st.sidebar.multiselect(
+            "Seleccionar Jugador(es)",
+            options=sorted(df['Jugador'].unique()),
+            default=None
         )
         
-        # Estadísticas
-        st.subheader("📈 Estadísticas")
-        st.dataframe(
-            df_filtrado[list(UMBRALES.keys())].describe().round(1),
-            use_container_width=True
+        categorias = st.sidebar.multiselect(
+            "Seleccionar Categoría(s)",
+            options=sorted(df['Categoría'].unique()),
+            default=None
         )
+        
+        fechas = st.sidebar.multiselect(
+            "Seleccionar Fecha(s)",
+            options=sorted(df['Fecha'].unique(), reverse=True),
+            default=None
+        )
+        
+        # Aplicar filtros
+        df_filtrado = aplicar_filtros(df, jugadores, categorias, fechas)
+        
+        # Mostrar resultados
+        st.header("Resultados de Pruebas")
+        
+        if df_filtrado.empty:
+            st.warning("No hay registros con los filtros seleccionados")
+        else:
+            # Preparar datos para visualización
+            df_mostrar = df_filtrado.copy()
+            
+            # Aplicar iconos
+            for prueba in UMBRALES:
+                if prueba in df_mostrar.columns:
+                    df_mostrar[prueba] = df_mostrar[prueba].apply(
+                        lambda x: mostrar_icono(x, UMBRALES[prueba])
+            
+            # Seleccionar columnas a mostrar
+            columnas_mostrar = ['Jugador', 'Categoría', 'Fecha'] + list(UMBRALES.keys())
+            columnas_mostrar = [c for c in columnas_mostrar if c in df_mostrar.columns]
+            
+            # Mostrar tabla con estilo
+            st.dataframe(
+                df_mostrar[columnas_mostrar].style.applymap(
+                    lambda x: 'color: green' if x == "👍" else 
+                             ('color: red' if x == "👎" else 'color: gray'),
+                    subset=list(UMBRALES.keys())
+                ),
+                height=600,
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # Mostrar estadísticas
+            st.subheader("Estadísticas")
+            st.dataframe(
+                df_filtrado[list(UMBRALES.keys())].describe().round(1),
+                use_container_width=True
+            )
+            
+            # Exportar datos
+            st.download_button(
+                label="Descargar datos filtrados",
+                data=df_filtrado.to_csv(index=False).encode('utf-8'),
+                file_name=f"resultados_movilidad_{datetime.now().date()}.csv",
+                mime="text/csv"
+            )
+            
+    except Exception as e:
+        st.error(f"Error inesperado: {str(e)}")
 
 if __name__ == "__main__":
     main()
