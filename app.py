@@ -161,15 +161,18 @@ def main():
     if df_filtrado.empty:
         st.warning("No hay resultados con los filtros seleccionados")
     else:
-        # Aplicar iconos
+        # Crear una copia para mostrar (para no modificar el original)
+        df_mostrar = df_filtrado.copy()
+        
+        # Aplicar iconos a las columnas relevantes
         for col in UMBRALES:
-            if col in df_filtrado.columns:
-                df_filtrado[col] = df_filtrado[col].apply(
+            if col in df_mostrar.columns:
+                df_mostrar[col] = df_mostrar[col].apply(
                     lambda x: mostrar_icono(x, UMBRALES[col])
         
         # Mostrar tabla
         st.dataframe(
-            df_filtrado[
+            df_mostrar[
                 ["Jugador", "Categoría", "Fecha"] + 
                 list(UMBRALES.keys())
             ].style.applymap(
