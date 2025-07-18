@@ -2,47 +2,51 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
-# Configuración del dashboard
+# Configuración
 st.set_page_config(
     page_title="Dashboard Interactivo Resultados de Pruebas de Movilidad",
     layout="wide",
     page_icon="⚽"
 )
 
-# URLs importantes
-LOGO_URL = "https://ibb.co/5hKcnyZ3"  # Cambia por tu logo real
+# URLs (¡Actualiza el logo!)
+LOGO_URL = "https://ibb.co/5hKcnyZ3"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
 @st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Leer el CSV con manejo robusto de errores
-        df = pd.read_csv(
-            DATA_URL,
-            encoding='utf-8',
-            sep=',',
-            parse_dates=['Fecha'],
-            dayfirst=True
-        )
+        # Leer CSV sin parseo automático de fechas
+        df = pd.read_csv(DATA_URL, encoding='utf-8')
+        
+        # Verificar y renombrar columnas críticas
+        column_map = {
+            'Fecha de prueba': 'Fecha',  # Nombre actual → Nombre deseado
+            'Jugador': 'Jugador',
+            'Categoría': 'Categoría'
+        }
+        
+        # Renombrar columnas
+        df = df.rename(columns={k: v for k, v in column_map.items() if k in df.columns})
         
         # Verificar columnas esenciales
-        columnas_requeridas = ['Jugador', 'Categoría', 'Fecha']
-        for col in columnas_requeridas:
-            if col not in df.columns:
-                st.error(f"Columna faltante: {col}")
-                return pd.DataFrame()
+        required_columns = ['Jugador', 'Categoría', 'Fecha']
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            st.error(f"Columnas faltantes: {', '.join(missing)}")
+            return pd.DataFrame()
 
         # Limpieza de datos
-        df = df.dropna(subset=['Jugador', 'Fecha'])  # Eliminar filas vacías
+        df = df.dropna(subset=['Jugador', 'Fecha'])
         
-        # Procesamiento de fechas
+        # Convertir fechas (formato DD/MM/AAAA)
         df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
-        df = df.dropna(subset=['Fecha'])  # Eliminar fechas inválidas
+        df = df.dropna(subset=['Fecha'])
         
         # Limpieza de categorías
         df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
         
-        # Procesamiento de valores numéricos
+        # Procesar valores numéricos
         pruebas_columns = [
             "THOMAS PSOAS D", "THOMAS PSOAS I",
             "THOMAS CUADRICEPS D", "THOMAS CUADRICEPS I",
@@ -66,7 +70,7 @@ def cargar_datos():
         st.error(f"Error al cargar datos: {str(e)}")
         return pd.DataFrame()
 
-# Definición de umbrales
+# Umbrales
 UMBRALES = {
     "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
     "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
@@ -80,38 +84,33 @@ def mostrar_icono(valor, umbral):
     except:
         return "❓"
 
-# Interfaz principal
+# Interfaz
 def main():
     st.image(LOGO_URL, width=200)
     st.title("Dashboard Interactivo Resultados de Pruebas de Movilidad")
     
-    # Cargar datos
     df = cargar_datos()
     
     if df.empty:
-        st.warning("No hay datos válidos para mostrar. Verifica tu archivo CSV.")
-        return
+        return  # Ya se mostró el mensaje de error
     
-    # Sección de filtros
+    # Filtros
     st.sidebar.header("Filtros")
     
-    # Filtro de jugador
     jugadores = st.sidebar.multiselect(
-        "Seleccionar Jugador",
+        "Jugador",
         options=sorted(df['Jugador'].unique()),
         default=None
     )
     
-    # Filtro de categoría
     categorias = st.sidebar.multiselect(
-        "Seleccionar Categoría",
+        "Categoría",
         options=sorted(df['Categoría'].unique()),
         default=None
     )
     
-    # Filtro de fecha
     fechas = st.sidebar.multiselect(
-        "Seleccionar Fecha",
+        "Fecha",
         options=sorted(df['Fecha'].unique(), reverse=True),
         default=None
     )
@@ -138,19 +137,17 @@ def main():
         
         # Mostrar tabla
         st.dataframe(
-            df_filtrado.style.applymap(
+            df_filtrado[
+                ["Jugador", "Categoría", "Fecha"] + 
+                [c for c in UMBRALES.keys() if c in df_filtrado.columns]
+            ].style.applymap(
                 lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
                 subset=list(UMBRALES.keys())
             ),
             height=700,
             use_container_width=True,
-            hide_index=True,
-            column_order=["Jugador", "Categoría", "Fecha"] + list(UMBRALES.keys())
+            hide_index=True
         )
-    
-    # Pie de página
-    st.sidebar.markdown("---")
-    st.sidebar.caption(f"Última actualización: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
 if __name__ == "__main__":
     main()
