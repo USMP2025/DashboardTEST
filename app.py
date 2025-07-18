@@ -63,7 +63,7 @@ def cargar_datos():
                     errors='coerce'
                 )
         
-        return df.dropna(subset=list(UMBRALES.keys()), None
+        return df.dropna(subset=list(UMBRALES.keys())), None
     except Exception as e:
         return pd.DataFrame(), str(e)
 
@@ -96,7 +96,7 @@ def main():
     
     jugadores = st.sidebar.multiselect(
         "Jugadores",
-        options=sorted(df['Jugador'].unique())
+        options=sorted(df['Jugador'].unique()))
     
     categorias = st.sidebar.multiselect(
         "Categorías",
