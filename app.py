@@ -16,23 +16,17 @@ DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2
 @st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Leer CSV sin asumir nombres de columnas
+        # Leer CSV con los nombres REALES de tus columnas
         df = pd.read_csv(DATA_URL, encoding='utf-8')
         
-        # Mapeo REAL de tus columnas (verificado en tu CSV)
+        # Verificación de columnas (nombres exactos de tu CSV)
+        st.write("🔍 Columnas encontradas en tu CSV:", list(df.columns))  # Solo para diagnóstico
+        
+        # Mapeo REAL de tus columnas
         column_map = {
-            'Nombre del Jugador': 'Jugador',
-            'Tipo de Prueba': 'Categoría',
-            'Fecha de Prueba': 'Fecha',
-            # Columnas de pruebas (nombres exactos de tu CSV)
-            'PSOAS D': 'THOMAS PSOAS D',
-            'PSOAS I': 'THOMAS PSOAS I',
-            'CUADRICEPS D': 'THOMAS CUADRICEPS D',
-            'CUADRICEPS I': 'THOMAS CUADRICEPS I',
-            'SARTORIO D': 'THOMAS SARTORIO D',
-            'SARTORIO I': 'THOMAS SARTORIO I',
-            'JURDAN D': 'JURDAN D',
-            'JURDAN I': 'JURDAN I'
+            'Jugador': 'Jugador',  # Verifica si en tu CSV es 'Jugador' o 'Nombre del Jugador'
+            'Categoría': 'Categoría',  # Verifica si en tu CSV es 'Categoría' o 'Tipo de Prueba'
+            'Fecha': 'Fecha'  # Verifica si en tu CSV es 'Fecha' o 'Fecha de Prueba'
         }
         
         # Renombrar columnas
@@ -42,8 +36,8 @@ def cargar_datos():
         required_columns = ['Jugador', 'Categoría', 'Fecha']
         missing = [col for col in required_columns if col not in df.columns]
         if missing:
-            st.error(f"Revisa tu CSV. Faltan: {', '.join(missing)}")
-            st.write("Columnas encontradas:", list(df.columns))
+            st.error(f"❌ Columnas faltantes en tu CSV: {', '.join(missing)}")
+            st.info("ℹ️ Las columnas requeridas son: 'Jugador', 'Categoría', 'Fecha'")
             return pd.DataFrame()
 
         # Limpieza de datos
@@ -56,8 +50,14 @@ def cargar_datos():
         # Limpieza de categorías
         df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
         
-        # Procesar valores numéricos
-        pruebas_columns = list(UMBRALES.keys())
+        # Procesar valores numéricos (nombres REALES de tus columnas de pruebas)
+        pruebas_columns = [
+            "THOMAS PSOAS D", "THOMAS PSOAS I",
+            "THOMAS CUADRICEPS D", "THOMAS CUADRICEPS I",
+            "THOMAS SARTORIO D", "THOMAS SARTORIO I",
+            "JURDAN D", "JURDAN I"
+        ]
+        
         for col in pruebas_columns:
             if col in df.columns:
                 df[col] = (
@@ -71,10 +71,10 @@ def cargar_datos():
         return df
 
     except Exception as e:
-        st.error(f"Error crítico: {str(e)}")
+        st.error(f"🚨 Error crítico al cargar datos: {str(e)}")
         return pd.DataFrame()
 
-# Umbrales (usando nombres estandarizados)
+# Umbrales
 UMBRALES = {
     "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
     "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
@@ -97,10 +97,10 @@ def main():
     
     if df.empty:
         st.warning("""
-            No se pudieron cargar los datos. Verifica que tu CSV tenga:
-            - 'Nombre del Jugador' (Jugador)
-            - 'Tipo de Prueba' (Categoría)
-            - 'Fecha de Prueba' (Fecha)
+            📢 No se pudieron cargar los datos. Por favor verifica:
+            1. Que tu CSV tenga las columnas: 'Jugador', 'Categoría' y 'Fecha'
+            2. Que los nombres coincidan exactamente (incluyendo mayúsculas y acentos)
+            3. Que el archivo no esté corrupto
         """)
         return
     
