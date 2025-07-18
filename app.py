@@ -146,6 +146,7 @@ def main():
             use_container_width=True,
             hide_index=True,
             column_order=["Jugador", "Categoría", "Fecha"] + list(UMBRALES.keys())
+        )
     
     # Pie de página
     st.sidebar.markdown("---")
