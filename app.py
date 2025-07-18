@@ -26,60 +26,6 @@ def cargar_logo():
         st.sidebar.warning("El logo no se pudo cargar")
         return None
 
-@st.cache_data(ttl=300)
-def cargar_datos():
-    try:
-        # Leer CSV con nombres exactos de columnas
-        df = pd.read_csv(DATA_URL, encoding='utf-8')
-        
-        # Mapeo exacto de columnas (verificado en tu CSV)
-        column_map = {
-            'JUGADOR': 'Jugador',
-            'CATEGORÍA': 'Categoría',
-            'FECHA': 'Fecha',
-            'THOMAS PSOAS D': 'THOMAS PSOAS D',
-            'THOMAS PSOAS I': 'THOMAS PSOAS I',
-            'THOMAS CUADRICEPS D': 'THOMAS CUADRICEPS D',
-            'THOMAS CUADRICEPS I': 'THOMAS CUADRICEPS I',
-            'THOMAS SARTORIO D': 'THOMAS SARTORIO D',
-            'THOMAS SARTORIO I': 'THOMAS SARTORIO I',
-            'JURDAN D': 'JURDAN D',
-            'JURDAN I': 'JURDAN I'
-        }
-        
-        df = df.rename(columns=column_map)
-        
-        # Verificación de columnas
-        required_columns = ['Jugador', 'Categoría', 'Fecha']
-        missing = [col for col in required_columns if col not in df.columns]
-        if missing:
-            st.error(f"Columnas requeridas faltantes: {', '.join(missing)}")
-            st.info(f"Columnas encontradas: {list(df.columns)}")
-            return pd.DataFrame()
-
-        # Limpieza y conversión de datos
-        df = df.dropna(subset=['Jugador', 'Fecha'])
-        df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
-        df = df.dropna(subset=['Fecha'])
-        df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
-        
-        # Procesar valores numéricos
-        pruebas_columns = list(UMBRALES.keys())
-        for col in pruebas_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(
-                    df[col].astype(str)
-                    .str.replace(',', '.')
-                    .str.replace(r'[^\d.]', '', regex=True),
-                    errors='coerce'
-                ).fillna(0)
-        
-        return df
-
-    except Exception as e:
-        st.error(f"Error al cargar datos: {str(e)}")
-        return pd.DataFrame()
-
 # Umbrales para las pruebas
 UMBRALES = {
     "THOMAS PSOAS D": 10,
@@ -92,7 +38,63 @@ UMBRALES = {
     "JURDAN I": 75
 }
 
+@st.cache_data(ttl=300)
+def cargar_datos():
+    try:
+        # Leer CSV directamente desde Google Drive
+        df = pd.read_csv(DATA_URL, encoding='utf-8')
+        
+        # Verificar las columnas disponibles
+        st.write("Columnas encontradas en el CSV:", df.columns.tolist())
+        
+        # Mapeo de columnas (ajustado según el CSV real)
+        column_map = {
+            'JUGADOR': 'Jugador',
+            'CATEGORIA': 'Categoría',  # Nota: En tu CSV es CATEGORIA sin acento
+            'FECHA': 'Fecha',
+            'THOMAS PSOAS D': 'THOMAS PSOAS D',
+            'THOMAS PSOAS I': 'THOMAS PSOAS I',
+            'THOMAS CUADRICEPS D': 'THOMAS CUADRICEPS D',
+            'THOMAS CUADRICEPS I': 'THOMAS CUADRICEPS I',
+            'THOMAS SARTORIO D': 'THOMAS SARTORIO D',
+            'THOMAS SARTORIO I': 'THOMAS SARTORIO I',
+            'JURDAN D': 'JURDAN D',
+            'JURDAN I': 'JURDAN I'
+        }
+        
+        # Renombrar columnas
+        df = df.rename(columns=column_map)
+        
+        # Limpieza y conversión de datos
+        df = df.dropna(subset=['Jugador', 'Fecha'])
+        
+        # Convertir fecha (manejar diferentes formatos)
+        try:
+            df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True).dt.date
+        except:
+            df['Fecha'] = pd.to_datetime(df['Fecha']).dt.date
+            
+        df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
+        
+        # Procesar valores numéricos
+        for col in UMBRALES.keys():
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str)
+                    .str.replace(',', '.')
+                    .str.replace(r'[^\d.]', '', regex=True),
+                    errors='coerce'
+                )
+        
+        return df
+
+    except Exception as e:
+        st.error(f"Error al cargar datos: {str(e)}")
+        return pd.DataFrame()
+
 def mostrar_icono(valor, umbral):
+    if pd.isna(valor):
+        return "❓"
     try:
         return "👍" if float(valor) >= umbral else "👎"
     except:
@@ -103,21 +105,20 @@ def main():
     # Logo
     logo = cargar_logo()
     if logo:
-        st.image(logo, width=200)
+        st.sidebar.image(logo, width=200)
     
-    st.title("Dashboard Interactivo Resultados de Pruebas de Movilidad")
+    st.title("Dashboard de Resultados de Pruebas de Movilidad")
     
     # Cargar datos
     df = cargar_datos()
     
     if df.empty:
-        st.warning("""
-            No se pudieron cargar datos. Verifica que:
-            1. El CSV tenga columnas: JUGADOR, CATEGORÍA, FECHA
-            2. Los nombres de columnas estén exactamente como se muestran arriba
-            3. El archivo contenga datos válidos
-        """)
+        st.warning("No se pudieron cargar datos. Verifica la conexión y el formato del archivo.")
         return
+    
+    # Mostrar vista previa de los datos
+    with st.expander("Ver datos crudos"):
+        st.dataframe(df.head())
     
     # Filtros en sidebar
     st.sidebar.header("Filtros")
@@ -128,59 +129,73 @@ def main():
     opciones_fecha = sorted(df['Fecha'].unique(), reverse=True)
     
     # Widgets de filtro
-    jugadores = st.sidebar.multiselect(
-        "Jugador",
-        options=opciones_jugador,
-        default=None
+    jugador_seleccionado = st.sidebar.multiselect(
+        "Seleccionar Jugador(es)",
+        options=opciones_jugador
     )
     
-    categorias = st.sidebar.multiselect(
-        "Categoría",
-        options=opciones_categoria,
-        default=None
+    categoria_seleccionada = st.sidebar.multiselect(
+        "Seleccionar Categoría(s)",
+        options=opciones_categoria
     )
     
-    fechas = st.sidebar.multiselect(
-        "Fecha",
-        options=opciones_fecha,
-        default=None
+    fecha_seleccionada = st.sidebar.multiselect(
+        "Seleccionar Fecha(s)",
+        options=opciones_fecha
     )
     
     # Aplicar filtros
+    filtro_aplicado = False
     df_filtrado = df.copy()
-    if jugadores:
-        df_filtrado = df_filtrado[df_filtrado['Jugador'].isin(jugadores)]
-    if categorias:
-        df_filtrado = df_filtrado[df_filtrado['Categoría'].isin(categorias)]
-    if fechas:
-        df_filtrado = df_filtrado[df_filtrado['Fecha'].isin(fechas)]
+    
+    if jugador_seleccionado:
+        df_filtrado = df_filtrado[df_filtrado['Jugador'].isin(jugador_seleccionado)]
+        filtro_aplicado = True
+    
+    if categoria_seleccionada:
+        df_filtrado = df_filtrado[df_filtrado['Categoría'].isin(categoria_seleccionada)]
+        filtro_aplicado = True
+    
+    if fecha_seleccionada:
+        df_filtrado = df_filtrado[df_filtrado['Fecha'].isin(fecha_seleccionada)]
+        filtro_aplicado = True
     
     # Mostrar resultados
-    st.subheader("Resultados Filtrados")
+    st.subheader("Resultados de Pruebas")
     
-    if df_filtrado.empty:
+    if not filtro_aplicado:
+        st.info("Usa los filtros en la barra lateral para explorar los datos")
+    elif df_filtrado.empty:
         st.warning("No hay resultados con los filtros seleccionados")
     else:
-        # Crear una copia para mostrar
+        # Crear copia para mostrar con iconos
         df_mostrar = df_filtrado.copy()
         
-        # Aplicar iconos a las columnas relevantes
-        for col in UMBRALES:
-            if col in df_mostrar.columns:
-                df_mostrar[col] = df_mostrar[col].apply(lambda x: mostrar_icono(x, UMBRALES[col]))
+        # Aplicar iconos a las columnas de pruebas
+        for prueba, umbral in UMBRALES.items():
+            if prueba in df_mostrar.columns:
+                df_mostrar[prueba] = df_mostrar[prueba].apply(lambda x: mostrar_icono(x, umbral))
         
-        # Mostrar tabla
+        # Seleccionar columnas a mostrar
+        columnas_mostrar = ["Jugador", "Categoría", "Fecha"] + list(UMBRALES.keys())
+        columnas_mostrar = [col for col in columnas_mostrar if col in df_mostrar.columns]
+        
+        # Mostrar tabla con estilo
         st.dataframe(
-            df_mostrar[
-                ["Jugador", "Categoría", "Fecha"] + 
-                list(UMBRALES.keys())
-            ].style.applymap(
-                lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
+            df_mostrar[columnas_mostrar].style.applymap(
+                lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else 'color: gray'),
                 subset=list(UMBRALES.keys())
             ),
             height=700,
             use_container_width=True,
             hide_index=True
+        )
+        
+        # Mostrar resumen estadístico
+        st.subheader("Resumen Estadístico")
+        st.dataframe(
+            df_filtrado[list(UMBRALES.keys())].describe().round(2),
+            use_container_width=True
         )
 
 if __name__ == "__main__":
