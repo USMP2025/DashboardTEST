@@ -2,24 +2,24 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 
-# Configuración
+# Configuración del dashboard
 st.set_page_config(
     page_title="Dashboard Interactivo Resultados de Pruebas de Movilidad",
     layout="wide",
     page_icon="⚽"
 )
 
-# URLs (¡Actualiza el logo!)
-LOGO_URL = "https://ibb.co/5hKcnyZ3"
+# URLs actualizadas
+LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"  # Logo actualizado
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
 @st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Leer CSV con los nombres EXACTOS de tus columnas
+        # Leer CSV con los nombres EXACTOS de columnas (en mayúsculas)
         df = pd.read_csv(DATA_URL, encoding='utf-8')
         
-        # Mapeo EXACTO de columnas (según tu CSV)
+        # Mapeo exacto de columnas (verificado en tu CSV)
         column_map = {
             'JUGADOR': 'Jugador',
             'CATEGORÍA': 'Categoría',  # Con tilde
@@ -41,7 +41,7 @@ def cargar_datos():
         required_columns = ['Jugador', 'Categoría', 'Fecha']
         missing = [col for col in required_columns if col not in df.columns]
         if missing:
-            st.error(f"Columnas requeridas faltantes: {', '.join(missing)}")
+            st.error(f"Columnas faltantes: {', '.join(missing)}")
             st.info(f"Columnas encontradas: {list(df.columns)}")
             return pd.DataFrame()
 
@@ -73,7 +73,7 @@ def cargar_datos():
         st.error(f"Error al cargar datos: {str(e)}")
         return pd.DataFrame()
 
-# Umbrales (ajustados a tus columnas)
+# Umbrales para las pruebas
 UMBRALES = {
     "THOMAS PSOAS D": 10, "THOMAS PSOAS I": 10,
     "THOMAS CUADRICEPS D": 50, "THOMAS CUADRICEPS I": 50,
@@ -87,11 +87,17 @@ def mostrar_icono(valor, umbral):
     except:
         return "❓"
 
-# Interfaz
+# Interfaz principal
 def main():
-    st.image(LOGO_URL, width=200)
+    # Logo con manejo de errores
+    try:
+        st.image(LOGO_URL, width=200)
+    except:
+        st.warning("No se pudo cargar el logo. Verifica la URL.")
+    
     st.title("Dashboard Interactivo Resultados de Pruebas de Movilidad")
     
+    # Cargar datos
     df = cargar_datos()
     
     if df.empty:
@@ -99,7 +105,7 @@ def main():
             No se pudieron cargar los datos. Verifica que:
             1. El CSV tenga las columnas: JUGADOR, CATEGORÍA, FECHA
             2. Los nombres estén en MAYÚSCULAS y con tildes
-            3. El archivo no esté corrupto
+            3. El archivo contenga datos válidos
         """)
         return
     
