@@ -4,10 +4,11 @@ from datetime import datetime
 from PIL import Image
 import requests
 from io import BytesIO
+import sys
 
-# Configuración esencial para mostrar emojis
+# Configuración del dashboard
 st.set_page_config(
-    page_title="Resultados USMP",
+    page_title="Dashboard de Pruebas USMP",
     layout="wide",
     page_icon="⚽"
 )
@@ -16,16 +17,16 @@ st.set_page_config(
 LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Umbrales para las pruebas (con emojis directos)
+# Configuración de pruebas con emojis directos
 PRUEBAS = {
-    "THOMAS PSOAS D": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS PSOAS I": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS CUADRICEPS D": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS CUADRICEPS I": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS SARTORIO D": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS SARTORIO I": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
-    "JURDAN D": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"},
-    "JURDAN I": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"}
+    "THOMAS PSOAS D": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
+    "THOMAS PSOAS I": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
+    "THOMAS CUADRICEPS D": {"umbral": 50, "aprobado": "👍", "reprobado": "👎"},
+    "THOMAS CUADRICEPS I": {"umbral": 50, "aprobado": "👍", "reprobado": "👎"},
+    "THOMAS SARTORIO D": {"umbral": 80, "aprobado": "👍", "reprobado": "👎"},
+    "THOMAS SARTORIO I": {"umbral": 80, "aprobado": "👍", "reprobado": "👎"},
+    "JURDAN D": {"umbral": 75, "aprobado": "👍", "reprobado": "👎"},
+    "JURDAN I": {"umbral": 75, "aprobado": "👍", "reprobado": "👎"}
 }
 
 def cargar_logo():
@@ -33,10 +34,12 @@ def cargar_logo():
         response = requests.get(LOGO_URL, timeout=10)
         return Image.open(BytesIO(response.content))
     except:
+        st.sidebar.warning("No se pudo cargar el logo")
         return None
 
 def cargar_datos():
     try:
+        # Cargar datos
         df = pd.read_csv(DATA_URL)
         
         # Normalizar nombres de columnas
@@ -68,9 +71,9 @@ def cargar_datos():
         
         # Procesar valores numéricos
         for prueba in PRUEBAS:
-            if prueba.upper() in df.columns:
+            if prueba in df.columns:
                 df[prueba] = pd.to_numeric(
-                    df[prueba.upper()].astype(str)
+                    df[prueba].astype(str)
                     .str.replace(',', '.')
                     .str.replace(r'[^\d.]', '', regex=True),
                     errors='coerce'
@@ -83,18 +86,12 @@ def cargar_datos():
         return None
 
 def main():
-    # Configurar encoding para emojis
-    import sys
-    import codecs
-    if sys.stdout.encoding != 'UTF-8':
-        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
-    
     # Cargar logo
     logo = cargar_logo()
     if logo:
         st.sidebar.image(logo, width=150)
     
-    st.title("📊 Resultados de Pruebas de Movilidad")
+    st.title("⚽ Resultados de Pruebas de Movilidad")
     
     # Cargar datos
     datos = cargar_datos()
@@ -108,7 +105,7 @@ def main():
         return
     
     # Filtros
-    st.sidebar.header("🔍 Filtros")
+    st.sidebar.header("Filtros")
     
     jugadores = st.sidebar.multiselect(
         "Jugadores",
@@ -140,14 +137,14 @@ def main():
         # Preparar datos para mostrar
         df_mostrar = datos.copy()
         
-        # Aplicar iconos solo a columnas existentes
+        # Aplicar iconos
         pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
         
         for prueba in pruebas_disponibles:
             df_mostrar[prueba] = df_mostrar[prueba].apply(
                 lambda x: (
-                    PRUEBAS[prueba]["icono_ok"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
-                    else PRUEBAS[prueba]["icono_fail"] if not pd.isna(x)
+                    PRUEBAS[prueba]["aprobado"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
+                    else PRUEBAS[prueba]["reprobado"] if not pd.isna(x)
                     else "❓"
                 )
             )
@@ -156,11 +153,11 @@ def main():
         columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
         columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
         
-        # Mostrar tabla con emojis
+        # Mostrar tabla
         st.dataframe(
             df_mostrar[columnas_mostrar].style.applymap(
-                lambda x: 'color: green' if x == PRUEBAS[next(iter(PRUEBAS))]["icono_ok"] else 
-                         'color: red' if x == PRUEBAS[next(iter(PRUEBAS))]["icono_fail"] else 
+                lambda x: 'color: green' if x == PRUEBAS[next(iter(PRUEBAS))]["aprobado"] else 
+                         'color: red' if x == PRUEBAS[next(iter(PRUEBAS))]["reprobado"] else 
                          'color: gray',
                 subset=pruebas_disponibles
             ),
@@ -170,7 +167,7 @@ def main():
         
         # Mostrar estadísticas
         if pruebas_disponibles:
-            st.subheader("📈 Estadísticas")
+            st.subheader("Estadísticas")
             st.dataframe(
                 datos[pruebas_disponibles].describe().round(1),
                 use_container_width=True
