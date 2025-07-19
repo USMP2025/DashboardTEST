@@ -59,11 +59,6 @@ def cargar_datos():
                     columnas_renombradas[alt] = nombre_estandar
                     break
         
-        # Verificar que tenemos todas las columnas necesarias
-        if len(columnas_renombradas) < 3:
-            st.error(f"No se encontraron todas las columnas necesarias. Columnas disponibles: {df.columns.tolist()}")
-            return None
-        
         # Renombrar columnas
         df = df.rename(columns=columnas_renombradas)
         
@@ -88,6 +83,36 @@ def cargar_datos():
     except Exception as e:
         st.error(f"Error al cargar datos: {str(e)}")
         return None
+
+def mostrar_resultados(datos):
+    """Función optimizada para mostrar resultados con iconos en Streamlit Cloud"""
+    # Crear una copia para no modificar los datos originales
+    df_mostrar = datos.copy()
+    
+    # Identificar qué pruebas están disponibles
+    pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
+    
+    # Aplicar iconos y coloración directamente
+    for prueba in pruebas_disponibles:
+        df_mostrar[prueba] = df_mostrar[prueba].apply(
+            lambda x: (
+                f"<span style='color:green'>{PRUEBAS[prueba]['icono_ok']}</span>" 
+                if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
+                else f"<span style='color:red'>{PRUEBAS[prueba]['icono_fail']}</span>"
+                if not pd.isna(x)
+                else "<span style='color:gray'>❓</span>"
+            )
+        )
+    
+    # Seleccionar columnas a mostrar
+    columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
+    columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
+    
+    # Mostrar tabla usando HTML para garantizar los iconos
+    st.markdown(
+        df_mostrar[columnas_mostrar].to_html(escape=False, index=False),
+        unsafe_allow_html=True
+    )
 
 def main():
     # Cargar logo
@@ -138,40 +163,10 @@ def main():
     if datos.empty:
         st.warning("No hay datos con los filtros seleccionados")
     else:
-        # Preparar datos para visualización
-        df_mostrar = datos.copy()
-        
-        # Identificar qué pruebas están disponibles en los datos
-        pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
-        
-        # Aplicar iconos a cada prueba disponible
-        for prueba in pruebas_disponibles:
-            df_mostrar[prueba] = df_mostrar[prueba].apply(
-                lambda x: (
-                    PRUEBAS[prueba]["icono_ok"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
-                    else PRUEBAS[prueba]["icono_fail"] if not pd.isna(x)
-                    else "❓"
-                )
-            )
-        
-        # Seleccionar columnas a mostrar
-        columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
-        columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
-        
-        # Mostrar tabla con los iconos de pulgares
-        st.dataframe(
-            df_mostrar[columnas_mostrar].style.applymap(
-                lambda x: 'color: green' if x == "👍" else 
-                         'color: red' if x == "👎" else 
-                         'color: gray',
-                subset=pruebas_disponibles
-            ),
-            height=600,
-            use_container_width=True,
-            hide_index=True
-        )
+        mostrar_resultados(datos)
         
         # Mostrar estadísticas si hay pruebas disponibles
+        pruebas_disponibles = [p for p in PRUEBAS if p in datos.columns]
         if pruebas_disponibles:
             st.subheader("Estadísticas")
             st.dataframe(
