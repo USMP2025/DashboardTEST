@@ -7,172 +7,179 @@ from io import BytesIO
 
 # Configuración del dashboard
 st.set_page_config(
-    page_title="Resultados de Pruebas USMP",
+    page_title="Dashboard Interactivo Resultados de Pruebas de Movilidad",
     layout="wide",
     page_icon="⚽"
 )
 
-# URLs de recursos
+# URLs actualizadas
 LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Umbrales para las pruebas con emojis directos
-PRUEBAS = {
-    "THOMAS PSOAS D": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS PSOAS I": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS CUADRICEPS D": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS CUADRICEPS I": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS SARTORIO D": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
-    "THOMAS SARTORIO I": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
-    "JURDAN D": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"},
-    "JURDAN I": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"}
-}
-
+# Función para cargar el logo
 def cargar_logo():
     try:
         response = requests.get(LOGO_URL, timeout=10)
-        return Image.open(BytesIO(response.content))
-    except:
-        st.sidebar.warning("No se pudo cargar el logo")
+        logo = Image.open(BytesIO(response.content))
+        return logo
+    except Exception as e:
+        st.sidebar.warning("El logo no se pudo cargar")
         return None
 
+@st.cache_data(ttl=300)
 def cargar_datos():
     try:
-        # Cargar el archivo CSV
-        df = pd.read_csv(DATA_URL)
+        # Leer CSV con nombres exactos de columnas
+        df = pd.read_csv(DATA_URL, encoding='utf-8')
         
-        # Normalizar nombres de columnas
-        df.columns = [col.strip().upper() for col in df.columns]
-        
-        # Mapeo flexible de columnas
-        mapeo_columnas = {
-            'JUGADOR': ['JUGADOR', 'NOMBRE', 'ATLETA'],
-            'CATEGORIA': ['CATEGORIA', 'CATEGORÍA', 'GRUPO'],
-            'FECHA': ['FECHA', 'FECHA PRUEBA']
+        # Mapeo exacto de columnas (verificado en tu CSV)
+        column_map = {
+            'JUGADOR': 'Jugador',
+            'CATEGORÍA': 'Categoría',
+            'FECHA': 'Fecha',
+            'THOMAS PSOAS D': 'THOMAS PSOAS D',
+            'THOMAS PSOAS I': 'THOMAS PSOAS I',
+            'THOMAS CUADRICEPS D': 'THOMAS CUADRICEPS D',
+            'THOMAS CUADRICEPS I': 'THOMAS CUADRICEPS I',
+            'THOMAS SARTORIO D': 'THOMAS SARTORIO D',
+            'THOMAS SARTORIO I': 'THOMAS SARTORIO I',
+            'JURDAN D': 'JURDAN D',
+            'JURDAN I': 'JURDAN I'
         }
         
-        # Buscar coincidencias para cada columna requerida
-        columnas_renombradas = {}
-        for nombre_estandar, alternativas in mapeo_columnas.items():
-            for alt in alternativas:
-                if alt in df.columns:
-                    columnas_renombradas[alt] = nombre_estandar
-                    break
+        df = df.rename(columns=column_map)
         
-        # Renombrar columnas
-        df = df.rename(columns=columnas_renombradas)
+        # Verificación de columnas
+        required_columns = ['Jugador', 'Categoría', 'Fecha']
+        missing = [col for col in required_columns if col not in df.columns]
+        if missing:
+            st.error(f"Columnas requeridas faltantes: {', '.join(missing)}")
+            st.info(f"Columnas encontradas: {list(df.columns)}")
+            return pd.DataFrame()
+
+        # Limpieza y conversión de datos
+        df = df.dropna(subset=['Jugador', 'Fecha'])
+        df['Fecha'] = pd.to_datetime(df['Fecha'], dayfirst=True, errors='coerce').dt.date
+        df = df.dropna(subset=['Fecha'])
+        df['Categoría'] = df['Categoría'].fillna('Sin categoría').str.strip()
         
-        # Limpieza básica de datos
-        df = df.dropna(subset=['JUGADOR', 'FECHA'])
-        
-        # Convertir fechas
-        df['FECHA'] = pd.to_datetime(df['FECHA'], errors='coerce').dt.date
-        
-        # Procesar valores numéricos para cada prueba
-        for prueba in PRUEBAS:
-            if prueba in df.columns:
-                df[prueba] = pd.to_numeric(
-                    df[prueba].astype(str)
+        # Procesar valores numéricos
+        pruebas_columns = list(UMBRALES.keys())
+        for col in pruebas_columns:
+            if col in df.columns:
+                df[col] = pd.to_numeric(
+                    df[col].astype(str)
                     .str.replace(',', '.')
                     .str.replace(r'[^\d.]', '', regex=True),
                     errors='coerce'
-                )
+                ).fillna(0)
         
         return df
-    
+
     except Exception as e:
         st.error(f"Error al cargar datos: {str(e)}")
-        return None
+        return pd.DataFrame()
 
-def mostrar_resultados(datos):
-    """Función optimizada para mostrar resultados con iconos en Streamlit Cloud"""
-    # Crear una copia para no modificar los datos originales
-    df_mostrar = datos.copy()
-    
-    # Identificar qué pruebas están disponibles
-    pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
-    
-    # Aplicar iconos y coloración directamente
-    for prueba in pruebas_disponibles:
-        df_mostrar[prueba] = df_mostrar[prueba].apply(
-            lambda x: (
-                f"<span style='color:green'>{PRUEBAS[prueba]['icono_ok']}</span>" 
-                if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
-                else f"<span style='color:red'>{PRUEBAS[prueba]['icono_fail']}</span>"
-                if not pd.isna(x)
-                else "<span style='color:gray'>❓</span>"
-            )
-        )
-    
-    # Seleccionar columnas a mostrar
-    columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
-    columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
-    
-    # Mostrar tabla usando HTML para garantizar los iconos
-    st.markdown(
-        df_mostrar[columnas_mostrar].to_html(escape=False, index=False),
-        unsafe_allow_html=True
-    )
+# Umbrales para las pruebas
+UMBRALES = {
+    "THOMAS PSOAS D": 10,
+    "THOMAS PSOAS I": 10,
+    "THOMAS CUADRICEPS D": 50,
+    "THOMAS CUADRICEPS I": 50,
+    "THOMAS SARTORIO D": 80,
+    "THOMAS SARTORIO I": 80,
+    "JURDAN D": 75,
+    "JURDAN I": 75
+}
 
+def mostrar_icono(valor, umbral):
+    try:
+        return "👍" if float(valor) >= umbral else "👎"
+    except:
+        return "❓"
+
+# Interfaz principal
 def main():
-    # Cargar logo
+    # Logo
     logo = cargar_logo()
     if logo:
-        st.sidebar.image(logo, width=150)
+        st.image(logo, width=200)
     
-    st.title("⚽ Resultados de Pruebas de Movilidad")
+    st.title("Dashboard Interactivo Resultados de Pruebas de Movilidad")
     
     # Cargar datos
-    datos = cargar_datos()
+    df = cargar_datos()
     
-    if datos is None:
-        st.error("No se pudieron cargar los datos. Verifica el archivo.")
+    if df.empty:
+        st.warning("""
+            No se pudieron cargar datos. Verifica que:
+            1. El CSV tenga columnas: JUGADOR, CATEGORÍA, FECHA
+            2. Los nombres de columnas estén exactamente como se muestran arriba
+            3. El archivo contenga datos válidos
+        """)
         return
     
-    if datos.empty:
-        st.warning("No hay datos disponibles")
-        return
-    
-    # Filtros
+    # Filtros en sidebar
     st.sidebar.header("Filtros")
     
+    # Obtener opciones únicas
+    opciones_jugador = sorted(df['Jugador'].unique())
+    opciones_categoria = sorted(df['Categoría'].unique())
+    opciones_fecha = sorted(df['Fecha'].unique(), reverse=True)
+    
+    # Widgets de filtro
     jugadores = st.sidebar.multiselect(
-        "Jugadores",
-        options=sorted(datos['JUGADOR'].unique())
+        "Jugador",
+        options=opciones_jugador,
+        default=None
     )
     
     categorias = st.sidebar.multiselect(
-        "Categorías",
-        options=sorted(datos['CATEGORIA'].unique()) if 'CATEGORIA' in datos.columns else []
+        "Categoría",
+        options=opciones_categoria,
+        default=None
     )
     
     fechas = st.sidebar.multiselect(
-        "Fechas",
-        options=sorted(datos['FECHA'].unique(), reverse=True)
+        "Fecha",
+        options=opciones_fecha,
+        default=None
     )
     
     # Aplicar filtros
+    df_filtrado = df.copy()
     if jugadores:
-        datos = datos[datos['JUGADOR'].isin(jugadores)]
-    if categorias and 'CATEGORIA' in datos.columns:
-        datos = datos[datos['CATEGORIA'].isin(categorias)]
+        df_filtrado = df_filtrado[df_filtrado['Jugador'].isin(jugadores)]
+    if categorias:
+        df_filtrado = df_filtrado[df_filtrado['Categoría'].isin(categorias)]
     if fechas:
-        datos = datos[datos['FECHA'].isin(fechas)]
+        df_filtrado = df_filtrado[df_filtrado['Fecha'].isin(fechas)]
     
     # Mostrar resultados
-    if datos.empty:
-        st.warning("No hay datos con los filtros seleccionados")
+    st.subheader("Resultados Filtrados")
+    
+    if df_filtrado.empty:
+        st.warning("No hay resultados con los filtros seleccionados")
     else:
-        mostrar_resultados(datos)
+        # Aplicar iconos
+        for col in UMBRALES:
+            if col in df_filtrado.columns:
+                df_filtrado[col] = df_filtrado[col].apply(
+                    lambda x: mostrar_icono(x, UMBRALES[col])
         
-        # Mostrar estadísticas si hay pruebas disponibles
-        pruebas_disponibles = [p for p in PRUEBAS if p in datos.columns]
-        if pruebas_disponibles:
-            st.subheader("Estadísticas")
-            st.dataframe(
-                datos[pruebas_disponibles].describe().round(1),
-                use_container_width=True
-            )
+        # Mostrar tabla
+        st.dataframe(
+            df_filtrado[
+                ["Jugador", "Categoría", "Fecha"] + 
+                list(UMBRALES.keys())
+            ].style.applymap(
+                lambda x: 'color: green' if x == "👍" else ('color: red' if x == "👎" else ''),
+                subset=list(UMBRALES.keys())
+            ),
+            height=700,
+            use_container_width=True,
+            hide_index=True
+        )
 
 if __name__ == "__main__":
     main()
