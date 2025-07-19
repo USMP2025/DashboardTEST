@@ -4,11 +4,10 @@ from datetime import datetime
 from PIL import Image
 import requests
 from io import BytesIO
-import sys
 
 # Configuración del dashboard
 st.set_page_config(
-    page_title="Dashboard de Pruebas USMP",
+    page_title="Resultados de Pruebas USMP",
     layout="wide",
     page_icon="⚽"
 )
@@ -17,7 +16,7 @@ st.set_page_config(
 LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Configuración de pruebas con emojis directos
+# Umbrales para las pruebas con emojis
 PRUEBAS = {
     "THOMAS PSOAS D": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
     "THOMAS PSOAS I": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
@@ -39,37 +38,48 @@ def cargar_logo():
 
 def cargar_datos():
     try:
-        # Cargar datos
+        # Cargar el archivo CSV
         df = pd.read_csv(DATA_URL)
+        
+        # Mostrar las columnas disponibles para diagnóstico
+        st.session_state.columnas_disponibles = df.columns.tolist()
         
         # Normalizar nombres de columnas
         df.columns = [col.strip().upper() for col in df.columns]
         
         # Mapeo flexible de columnas
-        columnas_requeridas = {
+        mapeo_columnas = {
             'JUGADOR': ['JUGADOR', 'NOMBRE', 'ATLETA'],
             'CATEGORIA': ['CATEGORIA', 'CATEGORÍA', 'GRUPO'],
-            'FECHA': ['FECHA', 'FECHA PRUEBA']
+            'FECHA': ['FECHA', 'FECHA PRUEBA', 'FECHAEVALUACION']
         }
         
-        # Buscar coincidencias
-        mapeo = {}
-        for estandar, alternativas in columnas_requeridas.items():
+        # Buscar coincidencias para cada columna requerida
+        columnas_renombradas = {}
+        for nombre_estandar, alternativas in mapeo_columnas.items():
             for alt in alternativas:
                 if alt in df.columns:
-                    mapeo[alt] = estandar
+                    columnas_renombradas[alt] = nombre_estandar
                     break
         
-        # Renombrar columnas
-        df = df.rename(columns=mapeo)
+        # Verificar que tenemos todas las columnas necesarias
+        if len(columnas_renombradas) < 3:
+            st.error(f"No se encontraron todas las columnas necesarias. Columnas disponibles: {df.columns.tolist()}")
+            return None
         
-        # Limpieza básica
+        # Renombrar columnas
+        df = df.rename(columns=columnas_renombradas)
+        
+        # Limpieza básica de datos
         df = df.dropna(subset=['JUGADOR', 'FECHA'])
         
         # Convertir fechas
-        df['FECHA'] = pd.to_datetime(df['FECHA'], errors='coerce').dt.date
+        try:
+            df['FECHA'] = pd.to_datetime(df['FECHA'], dayfirst=True).dt.date
+        except:
+            df['FECHA'] = pd.to_datetime(df['FECHA']).dt.date
         
-        # Procesar valores numéricos
+        # Procesar valores numéricos para cada prueba
         for prueba in PRUEBAS:
             if prueba in df.columns:
                 df[prueba] = pd.to_numeric(
@@ -91,21 +101,26 @@ def main():
     if logo:
         st.sidebar.image(logo, width=150)
     
-    st.title("⚽ Resultados de Pruebas de Movilidad")
+    st.title("📊 Resultados de Pruebas de Movilidad")
     
     # Cargar datos
     datos = cargar_datos()
     
     if datos is None:
-        st.error("No se pudieron cargar los datos. Verifica el archivo.")
+        if hasattr(st.session_state, 'columnas_disponibles'):
+            st.error(f"Columnas disponibles en el archivo: {st.session_state.columnas_disponibles}")
         return
     
     if datos.empty:
-        st.warning("No hay datos disponibles")
+        st.warning("No se encontraron datos válidos en el archivo.")
         return
     
+    # Mostrar información general
+    st.sidebar.markdown(f"**Total de registros:** {len(datos)}")
+    st.sidebar.markdown(f"**Período evaluado:** {datos['FECHA'].min()} al {datos['FECHA'].max()}")
+    
     # Filtros
-    st.sidebar.header("Filtros")
+    st.sidebar.header("🔍 Filtros")
     
     jugadores = st.sidebar.multiselect(
         "Jugadores",
@@ -134,12 +149,13 @@ def main():
     if datos.empty:
         st.warning("No hay datos con los filtros seleccionados")
     else:
-        # Preparar datos para mostrar
+        # Preparar datos para visualización
         df_mostrar = datos.copy()
         
-        # Aplicar iconos
+        # Identificar qué pruebas están disponibles en los datos
         pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
         
+        # Aplicar iconos a cada prueba disponible
         for prueba in pruebas_disponibles:
             df_mostrar[prueba] = df_mostrar[prueba].apply(
                 lambda x: (
@@ -153,21 +169,22 @@ def main():
         columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
         columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
         
-        # Mostrar tabla
+        # Mostrar tabla con estilo
         st.dataframe(
             df_mostrar[columnas_mostrar].style.applymap(
-                lambda x: 'color: green' if x == PRUEBAS[next(iter(PRUEBAS))]["aprobado"] else 
-                         'color: red' if x == PRUEBAS[next(iter(PRUEBAS))]["reprobado"] else 
+                lambda x: 'color: green' if x == "👍" else 
+                         'color: red' if x == "👎" else 
                          'color: gray',
                 subset=pruebas_disponibles
             ),
             height=600,
-            use_container_width=True
+            use_container_width=True,
+            hide_index=True
         )
         
-        # Mostrar estadísticas
+        # Mostrar estadísticas si hay pruebas disponibles
         if pruebas_disponibles:
-            st.subheader("Estadísticas")
+            st.subheader("📈 Estadísticas")
             st.dataframe(
                 datos[pruebas_disponibles].describe().round(1),
                 use_container_width=True
