@@ -5,9 +5,9 @@ from PIL import Image
 import requests
 from io import BytesIO
 
-# Configuración del dashboard
+# Configuración esencial para mostrar emojis
 st.set_page_config(
-    page_title="Dashboard de Pruebas USMP",
+    page_title="Resultados USMP",
     layout="wide",
     page_icon="⚽"
 )
@@ -16,16 +16,16 @@ st.set_page_config(
 LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Umbrales para las pruebas
+# Umbrales para las pruebas (con emojis directos)
 PRUEBAS = {
-    "THOMAS PSOAS D": {"umbral": 10, "unidad": "grados"},
-    "THOMAS PSOAS I": {"umbral": 10, "unidad": "grados"},
-    "THOMAS CUADRICEPS D": {"umbral": 50, "unidad": "grados"},
-    "THOMAS CUADRICEPS I": {"umbral": 50, "unidad": "grados"},
-    "THOMAS SARTORIO D": {"umbral": 80, "unidad": "grados"},
-    "THOMAS SARTORIO I": {"umbral": 80, "unidad": "grados"},
-    "JURDAN D": {"umbral": 75, "unidad": "cm"},
-    "JURDAN I": {"umbral": 75, "unidad": "cm"}
+    "THOMAS PSOAS D": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS PSOAS I": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS CUADRICEPS D": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS CUADRICEPS I": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS SARTORIO D": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS SARTORIO I": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
+    "JURDAN D": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"},
+    "JURDAN I": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"}
 }
 
 def cargar_logo():
@@ -37,51 +37,40 @@ def cargar_logo():
 
 def cargar_datos():
     try:
-        # Cargar datos y mostrar columnas disponibles para diagnóstico
         df = pd.read_csv(DATA_URL)
-        st.session_state.columnas_disponibles = df.columns.tolist()
         
         # Normalizar nombres de columnas
         df.columns = [col.strip().upper() for col in df.columns]
         
         # Mapeo flexible de columnas
-        mapeo_columnas = {
+        columnas_requeridas = {
             'JUGADOR': ['JUGADOR', 'NOMBRE', 'ATLETA'],
             'CATEGORIA': ['CATEGORIA', 'CATEGORÍA', 'GRUPO'],
             'FECHA': ['FECHA', 'FECHA PRUEBA']
         }
         
-        # Encontrar columnas reales
-        columnas_renombradas = {}
-        for nombre_estandar, alternativas in mapeo_columnas.items():
+        # Buscar coincidencias
+        mapeo = {}
+        for estandar, alternativas in columnas_requeridas.items():
             for alt in alternativas:
                 if alt in df.columns:
-                    columnas_renombradas[alt] = nombre_estandar
+                    mapeo[alt] = estandar
                     break
         
-        # Verificar que tenemos todas las columnas necesarias
-        if len(columnas_renombradas) < 3:
-            st.error(f"No se encontraron todas las columnas necesarias. Columnas disponibles: {df.columns.tolist()}")
-            return None
-        
         # Renombrar columnas
-        df = df.rename(columns=columnas_renombradas)
+        df = df.rename(columns=mapeo)
         
         # Limpieza básica
         df = df.dropna(subset=['JUGADOR', 'FECHA'])
         
         # Convertir fechas
-        try:
-            df['FECHA'] = pd.to_datetime(df['FECHA'], dayfirst=True).dt.date
-        except:
-            df['FECHA'] = pd.to_datetime(df['FECHA']).dt.date
+        df['FECHA'] = pd.to_datetime(df['FECHA'], errors='coerce').dt.date
         
         # Procesar valores numéricos
         for prueba in PRUEBAS:
-            prueba_norm = prueba.upper()
-            if prueba_norm in df.columns:
+            if prueba.upper() in df.columns:
                 df[prueba] = pd.to_numeric(
-                    df[prueba_norm].astype(str)
+                    df[prueba.upper()].astype(str)
                     .str.replace(',', '.')
                     .str.replace(r'[^\d.]', '', regex=True),
                     errors='coerce'
@@ -94,30 +83,32 @@ def cargar_datos():
         return None
 
 def main():
+    # Configurar encoding para emojis
+    import sys
+    import codecs
+    if sys.stdout.encoding != 'UTF-8':
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+    
+    # Cargar logo
     logo = cargar_logo()
     if logo:
         st.sidebar.image(logo, width=150)
     
-    st.title("Dashboard de Pruebas de Movilidad")
+    st.title("📊 Resultados de Pruebas de Movilidad")
     
-    # Cargar datos con manejo de errores
+    # Cargar datos
     datos = cargar_datos()
     
     if datos is None:
-        if hasattr(st.session_state, 'columnas_disponibles'):
-            st.error(f"Columnas disponibles en el archivo: {st.session_state.columnas_disponibles}")
+        st.error("No se pudieron cargar los datos. Verifica el archivo.")
         return
     
     if datos.empty:
-        st.warning("El archivo no contiene datos válidos")
+        st.warning("No hay datos disponibles")
         return
     
-    # Mostrar información general
-    st.sidebar.markdown(f"**Total registros:** {len(datos)}")
-    st.sidebar.markdown(f"**Rango fechas:** {datos['FECHA'].min()} a {datos['FECHA'].max()}")
-    
     # Filtros
-    st.sidebar.header("Filtros")
+    st.sidebar.header("🔍 Filtros")
     
     jugadores = st.sidebar.multiselect(
         "Jugadores",
@@ -146,25 +137,31 @@ def main():
     if datos.empty:
         st.warning("No hay datos con los filtros seleccionados")
     else:
-        # Preparar datos para visualización
+        # Preparar datos para mostrar
         df_mostrar = datos.copy()
         
-        # Aplicar evaluación solo a columnas existentes
+        # Aplicar iconos solo a columnas existentes
         pruebas_disponibles = [p for p in PRUEBAS if p in df_mostrar.columns]
         
         for prueba in pruebas_disponibles:
             df_mostrar[prueba] = df_mostrar[prueba].apply(
-                lambda x: "✅" if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"] else "❌" if not pd.isna(x) else "❓"
+                lambda x: (
+                    PRUEBAS[prueba]["icono_ok"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
+                    else PRUEBAS[prueba]["icono_fail"] if not pd.isna(x)
+                    else "❓"
+                )
             )
         
-        # Columnas a mostrar (solo las disponibles)
+        # Seleccionar columnas a mostrar
         columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
         columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
         
-        # Mostrar tabla
+        # Mostrar tabla con emojis
         st.dataframe(
             df_mostrar[columnas_mostrar].style.applymap(
-                lambda x: 'color: green' if x == "✅" else 'color: red' if x == "❌" else 'color: gray',
+                lambda x: 'color: green' if x == PRUEBAS[next(iter(PRUEBAS))]["icono_ok"] else 
+                         'color: red' if x == PRUEBAS[next(iter(PRUEBAS))]["icono_fail"] else 
+                         'color: gray',
                 subset=pruebas_disponibles
             ),
             height=600,
@@ -173,7 +170,7 @@ def main():
         
         # Mostrar estadísticas
         if pruebas_disponibles:
-            st.subheader("Estadísticas")
+            st.subheader("📈 Estadísticas")
             st.dataframe(
                 datos[pruebas_disponibles].describe().round(1),
                 use_container_width=True
