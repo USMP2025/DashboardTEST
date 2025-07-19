@@ -16,16 +16,16 @@ st.set_page_config(
 LOGO_URL = "https://i.ibb.co/5hKcnyZ3/logo-usmp.png"
 DATA_URL = "https://drive.google.com/uc?export=download&id=1ydetYhuHUcUGQl3ImcK2eGR-fzGaADXi"
 
-# Umbrales para las pruebas con emojis
+# Umbrales para las pruebas con emojis directos
 PRUEBAS = {
-    "THOMAS PSOAS D": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
-    "THOMAS PSOAS I": {"umbral": 10, "aprobado": "👍", "reprobado": "👎"},
-    "THOMAS CUADRICEPS D": {"umbral": 50, "aprobado": "👍", "reprobado": "👎"},
-    "THOMAS CUADRICEPS I": {"umbral": 50, "aprobado": "👍", "reprobado": "👎"},
-    "THOMAS SARTORIO D": {"umbral": 80, "aprobado": "👍", "reprobado": "👎"},
-    "THOMAS SARTORIO I": {"umbral": 80, "aprobado": "👍", "reprobado": "👎"},
-    "JURDAN D": {"umbral": 75, "aprobado": "👍", "reprobado": "👎"},
-    "JURDAN I": {"umbral": 75, "aprobado": "👍", "reprobado": "👎"}
+    "THOMAS PSOAS D": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS PSOAS I": {"umbral": 10, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS CUADRICEPS D": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS CUADRICEPS I": {"umbral": 50, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS SARTORIO D": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
+    "THOMAS SARTORIO I": {"umbral": 80, "icono_ok": "👍", "icono_fail": "👎"},
+    "JURDAN D": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"},
+    "JURDAN I": {"umbral": 75, "icono_ok": "👍", "icono_fail": "👎"}
 }
 
 def cargar_logo():
@@ -41,9 +41,6 @@ def cargar_datos():
         # Cargar el archivo CSV
         df = pd.read_csv(DATA_URL)
         
-        # Mostrar las columnas disponibles para diagnóstico
-        st.session_state.columnas_disponibles = df.columns.tolist()
-        
         # Normalizar nombres de columnas
         df.columns = [col.strip().upper() for col in df.columns]
         
@@ -51,7 +48,7 @@ def cargar_datos():
         mapeo_columnas = {
             'JUGADOR': ['JUGADOR', 'NOMBRE', 'ATLETA'],
             'CATEGORIA': ['CATEGORIA', 'CATEGORÍA', 'GRUPO'],
-            'FECHA': ['FECHA', 'FECHA PRUEBA', 'FECHAEVALUACION']
+            'FECHA': ['FECHA', 'FECHA PRUEBA']
         }
         
         # Buscar coincidencias para cada columna requerida
@@ -74,10 +71,7 @@ def cargar_datos():
         df = df.dropna(subset=['JUGADOR', 'FECHA'])
         
         # Convertir fechas
-        try:
-            df['FECHA'] = pd.to_datetime(df['FECHA'], dayfirst=True).dt.date
-        except:
-            df['FECHA'] = pd.to_datetime(df['FECHA']).dt.date
+        df['FECHA'] = pd.to_datetime(df['FECHA'], errors='coerce').dt.date
         
         # Procesar valores numéricos para cada prueba
         for prueba in PRUEBAS:
@@ -101,26 +95,21 @@ def main():
     if logo:
         st.sidebar.image(logo, width=150)
     
-    st.title("📊 Resultados de Pruebas de Movilidad")
+    st.title("⚽ Resultados de Pruebas de Movilidad")
     
     # Cargar datos
     datos = cargar_datos()
     
     if datos is None:
-        if hasattr(st.session_state, 'columnas_disponibles'):
-            st.error(f"Columnas disponibles en el archivo: {st.session_state.columnas_disponibles}")
+        st.error("No se pudieron cargar los datos. Verifica el archivo.")
         return
     
     if datos.empty:
-        st.warning("No se encontraron datos válidos en el archivo.")
+        st.warning("No hay datos disponibles")
         return
     
-    # Mostrar información general
-    st.sidebar.markdown(f"**Total de registros:** {len(datos)}")
-    st.sidebar.markdown(f"**Período evaluado:** {datos['FECHA'].min()} al {datos['FECHA'].max()}")
-    
     # Filtros
-    st.sidebar.header("🔍 Filtros")
+    st.sidebar.header("Filtros")
     
     jugadores = st.sidebar.multiselect(
         "Jugadores",
@@ -159,8 +148,8 @@ def main():
         for prueba in pruebas_disponibles:
             df_mostrar[prueba] = df_mostrar[prueba].apply(
                 lambda x: (
-                    PRUEBAS[prueba]["aprobado"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
-                    else PRUEBAS[prueba]["reprobado"] if not pd.isna(x)
+                    PRUEBAS[prueba]["icono_ok"] if not pd.isna(x) and x >= PRUEBAS[prueba]["umbral"]
+                    else PRUEBAS[prueba]["icono_fail"] if not pd.isna(x)
                     else "❓"
                 )
             )
@@ -169,7 +158,7 @@ def main():
         columnas_base = ['JUGADOR', 'CATEGORIA', 'FECHA'] if 'CATEGORIA' in df_mostrar.columns else ['JUGADOR', 'FECHA']
         columnas_mostrar = [c for c in columnas_base + pruebas_disponibles if c in df_mostrar.columns]
         
-        # Mostrar tabla con estilo
+        # Mostrar tabla con los iconos de pulgares
         st.dataframe(
             df_mostrar[columnas_mostrar].style.applymap(
                 lambda x: 'color: green' if x == "👍" else 
@@ -184,7 +173,7 @@ def main():
         
         # Mostrar estadísticas si hay pruebas disponibles
         if pruebas_disponibles:
-            st.subheader("📈 Estadísticas")
+            st.subheader("Estadísticas")
             st.dataframe(
                 datos[pruebas_disponibles].describe().round(1),
                 use_container_width=True
